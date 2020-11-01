@@ -1,0 +1,16 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "FileType",
+        "repositoryURL": "https://github.com/velocityzen/FileType",
+        "state": {
+          "branch": null,
+          "revision": "6a38d3c85678be4e63dfce89c33c339f048f135a",
+          "version": "1.0.4"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
