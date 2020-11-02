@@ -25,10 +25,10 @@ func parseID3v2FrameValues(data: Data, version: UInt8, header: ID3v2FrameHeader)
 }
 
 func removeUnsyncBytes(_ data: Data) -> Data {
-  var readI = 0
-  var writeI = 0
+  var readI = data.startIndex
+  var writeI = data.startIndex
   var result = data
-  while (readI < data.count - 1) {
+  while (readI < data.endIndex) {
     if (readI != writeI) {
       result[writeI] = data[readI]
     }
@@ -39,7 +39,7 @@ func removeUnsyncBytes(_ data: Data) -> Data {
     writeI += 1
     result[writeI] = data[readI];
   }
-  return result.subdata(in: 0..<writeI)
+  return result.subdata(in: data.startIndex..<writeI)
 }
 
 // id3v2.4 defines that multiple T* values are separated by 0x00
@@ -100,7 +100,7 @@ private func parseInt(_ str: String) -> Int? {
   return Int(str) ?? nil
 }
 
-func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> MetadataField? {
+func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
   if data.count == 0 {
     return nil
   }
@@ -123,19 +123,19 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> MetadataF
           guard let value = parseInt(text) else {
             return nil
           }
-          return .track(value: value)
+          return ".track(value: \(value))"
         
         case "TPOS":
           guard let value = parseInt(text) else {
             return nil
           }
-          return .disk(value: value)
+          return ".disk(value: \(value))"
 
         case "TCOM", "TCON", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
-          return splitValues(text)
+          return "splitValues(\(text))"
 
         default:
-          return version >= 4 ? splitValue(text) : [text]
+          return version >= 4 ? "splitValue(\(text))" : "[\(text)]"
       }
 
       return text
@@ -148,7 +148,7 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> MetadataF
       return "parsePictures(data: Data, version)"
 
     case "CNT", "PCNT":
-      return data.getInt32BE()
+      return "\(data.getInt32BE())"
 //
 //    case "SYLT":
 //      return "parseSyncLyrics(data)"

@@ -19,38 +19,41 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     //TODO: check frameHeader.id
     
     offset += frameHeaderSize
-    
-    var frameData = data[offset..<offset + frameHeader.size]
+    let textEncoding = getTextEncoding(data[offset])
+    var information = data[(offset + 1)..<offset + frameHeader.size]
     
     if version == 3 || version == 4 {
-      if header.flags?.formatUnsynchronisation ?? false {
-        frameData = removeUnsyncBytes(frameData)
+      if frameHeader.flags?.formatUnsynchronisation ?? false {
+        information = removeUnsyncBytes(information)
       }
       
-      if header.flags?.formatDataLengthIndicator ?? false {
-        frameData = frameData[4..<frameData.count]
+      if frameHeader.flags?.formatDataLengthIndicator ?? false {
+        information = information[4..<information.count]
       }
     }
-    
-    let encoding = getTextEncoding(data[0])
+
     let frameIdCase = frameHeader.id != "TXXX" && frameHeader.id.first == "T" ? "T*" : frameHeader.id
-    
+
+//    switch frameHeader.id {
+//    case "TALB":
+//      let text = String(data: information, encoding: textEncoding)
+//      print("TALB -- Album/Movie/Show title -- \(text ?? "nil")")
+//    default:
+//      print("Unsupported frame header ID: \(frameHeader.id)")
+//    }
 
     switch frameIdCase {
-      case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
-        guard let text = frameData.getString(from: 1..<data.count, encoding: encoding) else {
-          return break
-        }
-        
-        switch frameHeader.id {
-          case "TMLC", "TIMPL", "IPLS":
-      
+    case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
+      guard let text = String(data: information, encoding: textEncoding) else {
+        break
+      }
+      print("\(frameHeader.id) -- \(text)")
+    default:
+      print("Unsupported frame header ID: \(frameHeader.id)")
     }
     
     
     offset += frameHeader.size
-    
-    print("\(frameHeader.id) = \(values)")
   }
   
   return metadata

@@ -3,7 +3,7 @@ import XCTest
 
 final class ID3v2Tests: XCTestCase {
   func testID3v24() {
-    let url = URL(fileURLWithPath: "../Samples/id3v2.4.mp3", isDirectory: false)
+    let url = URL(fileURLWithPath: "/Users/timojaask/projects/MusicMetadata/Tests/Samples/id3v2.4.mp3", isDirectory: false)
     let metadata = try! getMusicMetadata(for: url)!
     
     XCTAssertEqual(metadata.type, .mp3)
