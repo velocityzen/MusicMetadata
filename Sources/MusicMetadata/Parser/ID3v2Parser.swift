@@ -15,8 +15,8 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     ) else {
       break
     }
-    
-    //TODO: check frameHeader.id
+
+    if frameHeader.dataSize < 1 { break }
     
     offset += frameHeaderSize
     let textEncoding = getTextEncoding(data[offset])
