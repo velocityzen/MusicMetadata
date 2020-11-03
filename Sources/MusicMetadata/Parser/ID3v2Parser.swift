@@ -1,6 +1,5 @@
 import Foundation
 
-
 func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
   guard let frameHeaderSize = getID3v2FrameHeaderSize(version) else {
     return nil
@@ -35,18 +34,61 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     let frameIdCase = frameHeader.id != "TXXX" && frameHeader.id.first == "T" ? "T*" : frameHeader.id
 
     switch frameIdCase {
+    
     case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
       guard let text = String(data: information, encoding: textEncoding) else {
+        fatalError()
         break
       }
       print("\(frameHeader.id) -- \(text)")
+      
     case "TXXX":
-      guard let text = String(data: information, encoding: textEncoding) else { break }
-      let stringArray = text.split(separator: Character(UnicodeScalar(0)))
-      guard stringArray.count == 2 else { break }
-      let description = stringArray[0]
-      let value = stringArray[1]
+      let dataArray = information.split(separator: 0)
+      guard dataArray.count == 2,
+            let description = String(data: dataArray[0], encoding: textEncoding),
+            let value = String(data: dataArray[1], encoding: textEncoding)
+      else {
+        fatalError()
+        break
+      }
       print("\(frameHeader.id) -- \(description) -- \(value)")
+      
+    case "APIC":
+      var mimeType: String? = nil
+      var pictureType: UInt8? = nil
+      var description: String? = nil
+      var pictureData: Data? = nil
+      var elementIndex = 0
+      var previousDataLastByte = 0
+      for i in information.startIndex..<information.endIndex {
+        if information[i] == 0 {
+          switch elementIndex {
+          case 0:
+            let mimeTypeData = information[information.startIndex..<i]
+            mimeType = String(data: mimeTypeData, encoding: .utf8)
+            pictureType = information[(i + 1)]
+            elementIndex += 1
+            previousDataLastByte = i + 1
+          case 1:
+            let descriptionData = information[(previousDataLastByte + 1)..<i]
+            description = String(data: descriptionData, encoding: textEncoding)
+            elementIndex += 1
+            previousDataLastByte = i - 1
+          case 2:
+            pictureData = information[(previousDataLastByte + 1)..<information.endIndex]
+            break
+          default:
+            break
+          }
+        }
+      }
+      if let mimeType = mimeType, let pictureType = pictureType, let description = description, let pictureData = pictureData {
+        print("\(frameHeader.id) -- \(mimeType) -- \(pictureType) -- \(description)")
+      } else {
+        fatalError()
+        break
+      }
+      
     default:
       print("Unsupported frame header ID: \(frameHeader.id)")
     }
