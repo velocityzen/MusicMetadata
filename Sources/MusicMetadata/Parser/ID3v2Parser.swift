@@ -18,16 +18,14 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     if frameHeader.dataSize < 1 { break }
     
     offset += frameHeaderSize
-    let textEncoding = getTextEncoding(data[offset])
-    var information = data[(offset + 1)..<offset + frameHeader.dataSize]
-    
+    var frameData = data[offset..<offset + frameHeader.dataSize]
     if version == 3 || version == 4 {
       if frameHeader.flags?.formatUnsynchronisation ?? false {
-        information = removeUnsyncBytes(information)
+        frameData = removeUnsyncBytes(frameData)
       }
-      
+
       if frameHeader.flags?.formatDataLengthIndicator ?? false {
-        information = information[4..<information.count]
+        frameData = frameData[4..<frameData.count]
       }
     }
 
@@ -36,100 +34,60 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     switch frameIdCase {
     
     case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
-      guard let text = String(data: information, encoding: textEncoding) else {
+      guard let text = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version) else {
         fatalError()
         break
       }
       print("\(frameHeader.id) -- \(text)")
       
     case "TXXX":
-        var description: String? = nil
-        var value: String? = nil
-        var elementIndex = 0
-        var previousDataLastByte = 0
-        for i in information.startIndex..<information.endIndex {
-          if information[i] == 0 {
-            switch elementIndex {
-            case 0:
-              let descriptionData = information[information.startIndex..<i]
-              description = String(data: descriptionData, encoding: textEncoding)
-              elementIndex += 1
-              previousDataLastByte = i - 1
-            case 1:
-              let valueData = information[(previousDataLastByte + 2)..<information.endIndex]
-              value = String(data: valueData, encoding: textEncoding)
-              break
-            default:
-              break
-            }
-          }
-        }
-        if let description = description, let value = value {
-          print("\(frameHeader.id) -- \(description) -- \(value)")
-        } else {
-          fatalError()
-          break
-        }
-      
-    case "APIC":
-      var mimeType: String? = nil
-      var pictureType: UInt8? = nil
-      var description: String? = nil
-      var pictureData: Data? = nil
-      var elementIndex = 0
-      var previousDataLastByte = 0
-      for i in information.startIndex..<information.endIndex {
-        if information[i] == 0 {
-          switch elementIndex {
-          case 0:
-            let mimeTypeData = information[information.startIndex..<i]
-            mimeType = String(data: mimeTypeData, encoding: .utf8)
-            pictureType = information[(i + 1)]
-            elementIndex += 1
-            previousDataLastByte = i + 1
-          case 1:
-            let descriptionData = information[(previousDataLastByte + 1)..<i]
-            description = String(data: descriptionData, encoding: textEncoding)
-            elementIndex += 1
-            previousDataLastByte = i - 1
-          case 2:
-            pictureData = information[(previousDataLastByte + 2)..<information.endIndex]
-            break
-          default:
-            break
-          }
-        }
-      }
-      if let mimeType = mimeType, let pictureType = pictureType, let description = description, let pictureData = pictureData {
-        print("\(frameHeader.id) -- \(mimeType) -- \(pictureType) -- \(description)")
-      } else {
+      guard let text = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version) else {
         fatalError()
         break
       }
+      print("\(frameHeader.id) -- \(text)")
       
+    case "APIC":
+        guard let text = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version) else {
+          fatalError()
+          break
+        }
+        print("\(frameHeader.id) -- \(text)")
+
+    case "SYLT":
+      fatalError("LYRICS!!!")
+
     case "PRIV":
       var ownerIdentifier: String? = nil
       var privateData: Data? = nil
-      var elementIndex = 0
-      var previousDataLastByte = 0
-      for i in information.startIndex..<information.endIndex {
-        if information[i] == 0 {
-          switch elementIndex {
-          case 0:
-            let ownerIdentifierData = information[information.startIndex..<i]
-            ownerIdentifier = String(data: ownerIdentifierData, encoding: .utf8)
-            elementIndex += 1
-            previousDataLastByte = i - 1
-          case 1:
-            privateData = information[(previousDataLastByte + 2)..<information.endIndex]
-            break
-          default:
-            break
-          }
+      for i in frameData.startIndex..<frameData.endIndex {
+        if frameData[i] == 0 {
+          let ownerIdentifierData = frameData[frameData.startIndex..<i]
+          ownerIdentifier = String(data: ownerIdentifierData, encoding: .utf8)
+          privateData = frameData[(i + 1)..<frameData.endIndex]
+          break
         }
       }
       if let ownerIdentifier = ownerIdentifier, let privateData = privateData {
         print("\(frameHeader.id) -- \(ownerIdentifier) -- private data count: \(privateData.count)")
+      } else {
+        fatalError()
+        break
+      }
+
+    case "UFID":
+      var ownerIdentifier: String? = nil
+      var fileIdentifierData: Data? = nil
+      for i in frameData.startIndex..<frameData.endIndex {
+        if frameData[i] == 0 {
+          let ownerIdentifierData = frameData[frameData.startIndex..<i]
+          ownerIdentifier = String(data: ownerIdentifierData, encoding: .utf8)
+          fileIdentifierData = frameData[(i + 1)..<frameData.endIndex]
+          break
+        }
+      }
+      if let ownerIdentifier = ownerIdentifier, let fileIdentifierData = fileIdentifierData {
+        print("\(frameHeader.id) -- \(ownerIdentifier) -- file identifier data count: \(fileIdentifierData.count)")
       } else {
         fatalError()
         break
