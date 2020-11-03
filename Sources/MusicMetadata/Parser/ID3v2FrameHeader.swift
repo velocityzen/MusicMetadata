@@ -13,7 +13,7 @@ struct ID3v2FrameHeaderFlags {
 
 struct ID3v2FrameHeader {
   let id: String
-  let size: Int
+  let dataSize: Int
   var flags: ID3v2FrameHeaderFlags?
 }
 
@@ -46,20 +46,20 @@ func parseID3v2FrameHeader(data: Data, version: UInt8) -> ID3v2FrameHeader? {
     case 2:
       return ID3v2FrameHeader(
         id: data.getString(from: 0..<3, encoding: .ascii)!,
-        size: data.getInt24BE(offset: 3)
+        dataSize: data.getInt24BE(offset: 3)
       )
       
     case 3:
       return ID3v2FrameHeader(
         id: data.getString(from: 0..<4, encoding: .ascii)!,
-        size: data.getInt32BE(offset: 4),
+        dataSize: data.getInt32BE(offset: 4),
         flags: parseID3v2FrameHeaderFlags(data)
       )
       
     case 4:
       return ID3v2FrameHeader(
         id: data.getString(from: 0..<4, encoding: .ascii)!,
-        size: data.getUInt32SyncSafe(offset: 4),
+        dataSize: data.getUInt32SyncSafe(offset: 4),
         flags: parseID3v2FrameHeaderFlags(data)
       )
       

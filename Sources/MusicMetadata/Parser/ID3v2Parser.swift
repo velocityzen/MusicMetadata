@@ -20,7 +20,7 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     
     offset += frameHeaderSize
     let textEncoding = getTextEncoding(data[offset])
-    var information = data[(offset + 1)..<offset + frameHeader.size]
+    var information = data[(offset + 1)..<offset + frameHeader.dataSize]
     
     if version == 3 || version == 4 {
       if frameHeader.flags?.formatUnsynchronisation ?? false {
@@ -52,8 +52,7 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
       print("Unsupported frame header ID: \(frameHeader.id)")
     }
     
-    
-    offset += frameHeader.size
+    offset += frameHeader.dataSize
   }
   
   return metadata
