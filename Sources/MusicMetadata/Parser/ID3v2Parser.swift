@@ -43,15 +43,33 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
       print("\(frameHeader.id) -- \(text)")
       
     case "TXXX":
-      let dataArray = information.split(separator: 0)
-      guard dataArray.count == 2,
-            let description = String(data: dataArray[0], encoding: textEncoding),
-            let value = String(data: dataArray[1], encoding: textEncoding)
-      else {
-        fatalError()
-        break
-      }
-      print("\(frameHeader.id) -- \(description) -- \(value)")
+        var description: String? = nil
+        var value: String? = nil
+        var elementIndex = 0
+        var previousDataLastByte = 0
+        for i in information.startIndex..<information.endIndex {
+          if information[i] == 0 {
+            switch elementIndex {
+            case 0:
+              let descriptionData = information[information.startIndex..<i]
+              description = String(data: descriptionData, encoding: textEncoding)
+              elementIndex += 1
+              previousDataLastByte = i - 1
+            case 1:
+              let valueData = information[(previousDataLastByte + 2)..<information.endIndex]
+              value = String(data: valueData, encoding: textEncoding)
+              break
+            default:
+              break
+            }
+          }
+        }
+        if let description = description, let value = value {
+          print("\(frameHeader.id) -- \(description) -- \(value)")
+        } else {
+          fatalError()
+          break
+        }
       
     case "APIC":
       var mimeType: String? = nil
@@ -75,7 +93,7 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
             elementIndex += 1
             previousDataLastByte = i - 1
           case 2:
-            pictureData = information[(previousDataLastByte + 1)..<information.endIndex]
+            pictureData = information[(previousDataLastByte + 2)..<information.endIndex]
             break
           default:
             break
@@ -84,6 +102,34 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
       }
       if let mimeType = mimeType, let pictureType = pictureType, let description = description, let pictureData = pictureData {
         print("\(frameHeader.id) -- \(mimeType) -- \(pictureType) -- \(description)")
+      } else {
+        fatalError()
+        break
+      }
+      
+    case "PRIV":
+      var ownerIdentifier: String? = nil
+      var privateData: Data? = nil
+      var elementIndex = 0
+      var previousDataLastByte = 0
+      for i in information.startIndex..<information.endIndex {
+        if information[i] == 0 {
+          switch elementIndex {
+          case 0:
+            let ownerIdentifierData = information[information.startIndex..<i]
+            ownerIdentifier = String(data: ownerIdentifierData, encoding: .utf8)
+            elementIndex += 1
+            previousDataLastByte = i - 1
+          case 1:
+            privateData = information[(previousDataLastByte + 2)..<information.endIndex]
+            break
+          default:
+            break
+          }
+        }
+      }
+      if let ownerIdentifier = ownerIdentifier, let privateData = privateData {
+        print("\(frameHeader.id) -- \(ownerIdentifier) -- private data count: \(privateData.count)")
       } else {
         fatalError()
         break
