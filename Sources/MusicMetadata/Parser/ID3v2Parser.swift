@@ -34,20 +34,19 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
 
     let frameIdCase = frameHeader.id != "TXXX" && frameHeader.id.first == "T" ? "T*" : frameHeader.id
 
-//    switch frameHeader.id {
-//    case "TALB":
-//      let text = String(data: information, encoding: textEncoding)
-//      print("TALB -- Album/Movie/Show title -- \(text ?? "nil")")
-//    default:
-//      print("Unsupported frame header ID: \(frameHeader.id)")
-//    }
-
     switch frameIdCase {
     case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
       guard let text = String(data: information, encoding: textEncoding) else {
         break
       }
       print("\(frameHeader.id) -- \(text)")
+    case "TXXX":
+      guard let text = String(data: information, encoding: textEncoding) else { break }
+      let stringArray = text.split(separator: Character(UnicodeScalar(0)))
+      guard stringArray.count == 2 else { break }
+      let description = stringArray[0]
+      let value = stringArray[1]
+      print("\(frameHeader.id) -- \(description) -- \(value)")
     default:
       print("Unsupported frame header ID: \(frameHeader.id)")
     }
