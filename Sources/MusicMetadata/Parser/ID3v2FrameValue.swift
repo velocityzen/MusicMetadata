@@ -6,23 +6,23 @@ let defaultEncoding = String.Encoding.isoLatin1
 
 func parseID3v2FrameValues(data: Data, version: UInt8, header: ID3v2FrameHeader) -> String? {
   switch version {
-    case 2:
-      return parseID3v2FrameValue(data: data, type: header.id, version: version)
-
-    case 3, 4:
-      var data = data
-      if header.flags?.formatUnsynchronisation ?? false {
-        data = removeUnsyncBytes(data)
-      }
-
-      if header.flags?.formatDataLengthIndicator ?? false {
-        data = data[4..<data.count]
-      }
-
-      return parseID3v2FrameValue(data: data, type: header.id, version: version)
-
-    default:
-      return nil
+  case 2:
+    return parseID3v2FrameValue(data: data, type: header.id, version: version)
+    
+  case 3, 4:
+    var data = data
+    if header.flags?.formatUnsynchronisation ?? false {
+      data = removeUnsyncBytes(data)
+    }
+    
+    if header.flags?.formatDataLengthIndicator ?? false {
+      data = data[4..<data.count]
+    }
+    
+    return parseID3v2FrameValue(data: data, type: header.id, version: version)
+    
+  default:
+    return nil
   }
 }
 
@@ -48,11 +48,11 @@ func removeUnsyncBytes(_ data: Data) -> Data {
 // id3v2.3 defines that TCOM, TEXT, TOLY, TOPE & TPE1 values are separated by /
 private func splitID3v2Values(_ str: String) -> [String] {
   let values = str.split(separator: "\u{00}")
-
+  
   if values.count > 1 {
     return trimArray(values)
   }
-
+  
   return trimArray(str.split(separator: "/"))
 }
 
@@ -67,21 +67,21 @@ private func trimArray(_ array: [Substring]) -> [String] {
 // Converts TMCL (Musician credits list) or TIPL (Involved people list)
 private func parseID3v2ArtistFunctionList(_ entries: [String]) -> ArtistsList {
   var result = [String: [String]]()
-
+  
   for i in stride(from: 0, to: entries.count, by: 2) {
     let names = entries[i + 1]
       .split(separator: ",")
       .map {
         $0.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
+      }
+    
     if result[entries[i]] != nil {
       result[entries[i]]?.append(contentsOf: names)
     } else {
       result[entries[i]] = names
     }
   }
-
+  
   return result;
 }
 
@@ -333,17 +333,17 @@ private func parsePicture(data: Data, encoding: String.Encoding, version: UInt8)
   guard let (mimeType, mimeTypeEndIndex) = parsePictureMimeType(data: data, version: version) else {
     return nil
   }
-
+  
   let pictureType = data[mimeTypeEndIndex + 1]
-
+  
   let fzero = findZero(data: data[mimeTypeEndIndex + 2..<data.endIndex], encoding: encoding)
   guard let description = data.getString(from: mimeTypeEndIndex + 2..<fzero, encoding: encoding) else {
     print("WARNING: Failed to parse image description")
     return nil
   }
-
+  
   let pictureData = data[fzero + getNullTerminatorLength(encoding: encoding)..<data.endIndex]
-
+  
   return (mimeType, pictureType, description, pictureData)
 }
 
@@ -376,81 +376,82 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
   if data.count == 0 {
     return nil
   }
-
+  
   let encoding = getTextEncoding(data[data.startIndex])
-
+  
   let typeCase = type != "TXXX" && type.first == "T" ? "T*" : type
   switch typeCase {
-    case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST":
-      guard let text = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: encoding) else {
-        return nil
-      }
-
-      switch type {
-        case "TMLC", "TIMPL", "IPLS":
-          let output = splitID3v2Values(text)
-          return "\(output)"
-
-        case "TRK", "TRCK", "TPOS":
-          return ".track(value: \(text))"
-
-        case "TCOM", "TCON", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
-          return "\(splitID3v2Values(text))"
-
-        case "PCS", "PCST":
-          return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
-
-        default:
-          return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
-      }
-
-    case "TXXX":
-      let frameData = data[data.startIndex + 1..<data.endIndex]
-      guard let (identifier, value) = parseZeroSeparatedStringPair(data: frameData, encoding: encoding) else {
-        return nil
-      }
+  case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST":
+    guard let text = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: encoding) else {
+      return nil
+    }
     
-      return "\(identifier) -- \(value)"
-
-    case "PIC", "APIC":
-      let frameData = data[data.startIndex + 1..<data.endIndex]
-      guard let (mimeType, pictureType, description, pictureData) = parsePicture(data: frameData, encoding: encoding, version: version) else {
-        return nil
-      }
-      return "\(mimeType) -- \(pictureType) -- \(description)"
-
-    case "CNT", "PCNT":
-      return "\(data.getInt32BE())"
-
-    case "SYLT":
-      return "\(parseSyncTextFrame(data: data) ?? "")"
-
-    case "ULT", "USLT", "COM", "COMM":
-      return "\(parseUnsyncTextFrame(data: data) ?? "")"
-
-    case "UFID", "PRIV":
-      guard let (identifier, value) = parseZeroSeparatedStringDataPair(data: data, encoding: encoding) else {
-        return nil
-      }
-      return "\(identifier) -- data len: \(value.count)"
-
-    case "POPM":
-      return "\(parsePopularimeterFrame(data: data) ?? "")"
-
-    case "GEOB":
-      return "\(parseGeneralEncapsulatedDataFrame(data:data) ?? "")"
-
-    case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
-      return "\(parseUrlLinkFrame(data:data) ?? "")"
-
-    case "WXXX":
-      return "\(parseUserUrlLinkFrame(data: data) ?? "")"
-//
-//    case "MCDI":
-//      return "parseMusicCDId"
-//
+    switch type {
+    case "TMLC", "TIMPL", "IPLS":
+      let output = splitID3v2Values(text)
+      return "\(output)"
+      
+    case "TRK", "TRCK", "TPOS":
+      return ".track(value: \(text))"
+      
+    case "TCOM", "TCON", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
+      return "\(splitID3v2Values(text))"
+      
+    case "PCS", "PCST":
+      return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
+      
     default:
-      return "NOT IMPLEMENTED FRAME ID: \(type)"
+      return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
+    }
+    
+  case "TXXX":
+    let frameData = data[data.startIndex + 1..<data.endIndex]
+    guard let (identifier, value) = parseZeroSeparatedStringPair(data: frameData, encoding: encoding) else {
+      return nil
+    }
+    
+    return "\(identifier) -- \(value)"
+    
+  case "PIC", "APIC":
+    let frameData = data[data.startIndex + 1..<data.endIndex]
+    guard let (mimeType, pictureType, description, pictureData) = parsePicture(data: frameData, encoding: encoding, version: version) else {
+      return nil
+    }
+    return "\(mimeType) -- \(pictureType) -- \(description)"
+    
+  case "CNT", "PCNT":
+    return "\(data.getInt32BE())"
+    
+  case "SYLT":
+    return "\(parseSyncTextFrame(data: data) ?? "")"
+    
+  case "ULT", "USLT", "COM", "COMM":
+    return "\(parseUnsyncTextFrame(data: data) ?? "")"
+    
+  case "UFID", "PRIV":
+    guard let (identifier, value) = parseZeroSeparatedStringDataPair(data: data, encoding: encoding) else {
+      return nil
+    }
+    return "\(identifier) -- data len: \(value.count)"
+    
+  case "POPM":
+    return "\(parsePopularimeterFrame(data: data) ?? "")"
+    
+  case "GEOB":
+    return "\(parseGeneralEncapsulatedDataFrame(data:data) ?? "")"
+    
+  case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
+    return "\(parseUrlLinkFrame(data:data) ?? "")"
+    
+  case "WXXX":
+    return "\(parseUserUrlLinkFrame(data: data) ?? "")"
+    
+    
+  //    case "MCDI":
+  //      return "parseMusicCDId"
+  
+  default:
+    return "NOT IMPLEMENTED FRAME ID: \(type)"
   }
 }
 
