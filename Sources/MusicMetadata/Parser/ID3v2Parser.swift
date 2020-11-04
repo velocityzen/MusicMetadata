@@ -55,7 +55,11 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
         print("\(frameHeader.id) -- \(text)")
 
     case "SYLT":
-      fatalError("LYRICS!!!")
+      guard let text = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version) else {
+        fatalError()
+        break
+      }
+      print("\(frameHeader.id) -- \(text)")
 
     case "PRIV":
       var ownerIdentifier: String? = nil
