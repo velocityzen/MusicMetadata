@@ -361,7 +361,10 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
       return "\(parseUnsyncTextFrame(data: data) ?? "")"
 
     case "UFID", "PRIV":
-      return "parseIndentifierFrame(data)"
+      guard let (identifier, value) = parseZeroSeparatedStringDataPair(data: data, encoding: encoding) else {
+        return nil
+      }
+      return "\(identifier) -- data len: \(value.count)"
 
 //    case "POPM":
 //      return "parsePopularimeter(data, encoding)"
