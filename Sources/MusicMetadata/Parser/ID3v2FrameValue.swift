@@ -122,21 +122,21 @@ private func parseSyncTextFrame(data: Data) -> String? {
   let languageStartIndex = data.startIndex + 1
   let languageEndIndex = languageStartIndex + 3
   guard let language = data.getString(from: languageStartIndex..<languageEndIndex, encoding: defaultEncoding) else {
-    fatalError("Unable to parse lyrics language")
+    fatalError("Unable to parse synchronized text language")
   }
   
   guard let timeStampFormat = SyncTextTimeStampUnit(rawValue: Int(data[languageEndIndex])) else {
-    fatalError("Unable to parse lyrics time stamp format")
+    fatalError("Unable to parse synchronized text time stamp format")
   }
   
   guard let contentType = SyncTextContentType(rawValue: Int(data[languageEndIndex + 1])) else {
-    fatalError("Unable to parse lyrics content type")
+    fatalError("Unable to parse synchronized text content type")
   }
   
   let contentDescriptorStartIndex = languageEndIndex + 2
   let contentDescriptorEndIndex = findZero(data: data[contentDescriptorStartIndex..<data.endIndex], encoding: textEncoding)
   guard let contentDescriptor = data.getString(from: contentDescriptorStartIndex..<contentDescriptorEndIndex, encoding: textEncoding) else {
-    fatalError("Unable to parse lyrics content")
+    fatalError("Unable to parse synchronized text content descriptor")
   }
   
   /*
@@ -164,6 +164,34 @@ private func parseSyncTextFrame(data: Data) -> String? {
   }
   
   return "\(language) -- \(timeStampFormat) -- \(contentType) -- \(contentDescriptor) -- \(debutStr)"
+}
+
+private func parseUnsyncTextFrame(data: Data) -> String? {
+  //  <Header for 'Unsynchronised lyrics/text transcription', ID: "USLT">
+  //       Text encoding        $xx
+  //       Language             $xx xx xx
+  //       Content descriptor   <text string according to encoding> $00 (00)
+  //       Lyrics/text          <full text string according to encoding>
+  let textEncoding = getTextEncoding(data[data.startIndex])
+  
+  let languageStartIndex = data.startIndex + 1
+  let languageEndIndex = languageStartIndex + 3
+  guard let language = data.getString(from: languageStartIndex..<languageEndIndex, encoding: defaultEncoding) else {
+    fatalError("Unable to parse unsynchronized text language")
+  }
+  
+  let contentDescriptorStartIndex = languageEndIndex
+  let contentDescriptorEndIndex = findZero(data: data[contentDescriptorStartIndex..<data.endIndex], encoding: textEncoding)
+  guard let contentDescriptor = data.getString(from: contentDescriptorStartIndex..<contentDescriptorEndIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse unsynchronized text content")
+  }
+  
+  let textStartIndex = contentDescriptorEndIndex + getNullTerminatorLength(encoding: textEncoding)
+  guard let text = data.getString(from: textStartIndex..<data.endIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse unsynchronized text value")
+  }
+  
+  return "\(language) -- \(contentDescriptor) -- \(text)"
 }
 
 private func getNullTerminatorLength(encoding: String.Encoding) -> Int {
@@ -327,14 +355,14 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
       return "\(data.getInt32BE())"
 
     case "SYLT":
-      return "\(parseSyncTextFrame(data: data)!)"
-//
-//    case "ULT", "USLT", "COM", "COMM":
-//      return "parseUnsyncLyrics(data)"
-//
-//    case "UFID", "PRIV":
-//      return "parseIndentifierData(data, encoding)"
-//
+      return "\(parseSyncTextFrame(data: data) ?? "")"
+
+    case "ULT", "USLT", "COM", "COMM":
+      return "\(parseUnsyncTextFrame(data: data) ?? "")"
+
+    case "UFID", "PRIV":
+      return "parseIndentifierFrame(data)"
+
 //    case "POPM":
 //      return "parsePopularimeter(data, encoding)"
 //
