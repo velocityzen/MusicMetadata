@@ -194,6 +194,20 @@ private func parseUnsyncTextFrame(data: Data) -> String? {
   return "\(language) -- \(contentDescriptor) -- \(text)"
 }
 
+private func parsePopularimeterFrame(data: Data) -> String? {
+  let emailEndIndex = findZero(data: data, encoding: defaultEncoding)
+  guard let email = data.getString(from: data.startIndex..<emailEndIndex, encoding: defaultEncoding) else {
+    fatalError("Unable to parse popularmeter email")
+  }
+  
+  let ratingIndex = emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)
+  let rating = data[emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)]
+  
+  let counter = data.getInt32BE(offset: ratingIndex + 1)
+  
+  return "\(email) -- rating: \(rating) -- \(counter)"
+}
+
 private func getNullTerminatorLength(encoding: String.Encoding) -> Int {
   switch encoding {
   case .utf8, .isoLatin1:
@@ -366,8 +380,8 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
       }
       return "\(identifier) -- data len: \(value.count)"
 
-//    case "POPM":
-//      return "parsePopularimeter(data, encoding)"
+    case "POPM":
+      return "\(parsePopularimeterFrame(data: data) ?? "")"
 //
 //    case "GEOB":
 //      return "parseGeneralEncapsulatedData(data)"
