@@ -194,6 +194,41 @@ private func parseUnsyncTextFrame(data: Data) -> String? {
   return "\(language) -- \(contentDescriptor) -- \(text)"
 }
 
+private func parseGeneralEncapsulatedDataFrame(data: Data) -> String? {
+  /*
+   <Header for 'General encapsulated object', ID: "GEOB">
+        Text encoding          $xx
+        MIME type              <text string> $00
+        Filename               <text string according to encoding> $00 (00)
+        Content description    <text string according to encoding> $00 (00)
+        Encapsulated object    <binary data>
+   */
+  let textEncoding = getTextEncoding(data[data.startIndex])
+  
+  let mimeTypeStartIndex = data.startIndex + 1
+  let mimeTypeEndIndex = findZero(data: data[mimeTypeStartIndex..<data.endIndex], encoding: defaultEncoding)
+  guard let mimeType = data.getString(from: mimeTypeStartIndex..<mimeTypeEndIndex, encoding: defaultEncoding) else {
+    fatalError("Unable to parse general encapsulated data MIME type")
+  }
+  
+  let fileNameStartIndex = mimeTypeEndIndex + getNullTerminatorLength(encoding: defaultEncoding)
+  let fileNameEndIndex = findZero(data: data[fileNameStartIndex..<data.endIndex], encoding: textEncoding)
+  guard let fileName = data.getString(from: fileNameStartIndex..<fileNameEndIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse general encapsulated data file name")
+  }
+  
+  let contentDescriptionStartIndex = fileNameEndIndex + getNullTerminatorLength(encoding: textEncoding)
+  let contentDescriptionEndIndex = findZero(data: data[contentDescriptionStartIndex..<data.endIndex], encoding: textEncoding)
+  guard let contentDescription = data.getString(from: contentDescriptionStartIndex..<contentDescriptionEndIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse general encapsulated data content description")
+  }
+  
+  let encapsulatedObjectStartIndex = contentDescriptionEndIndex + getNullTerminatorLength(encoding: textEncoding)
+  let encapsulatedObject = data[encapsulatedObjectStartIndex..<data.endIndex]
+  
+  return "\(mimeType) -- \(fileName) -- \(contentDescription) -- data len: \(encapsulatedObject.count)"
+}
+
 private func parsePopularimeterFrame(data: Data) -> String? {
   let emailEndIndex = findZero(data: data, encoding: defaultEncoding)
   guard let email = data.getString(from: data.startIndex..<emailEndIndex, encoding: defaultEncoding) else {
@@ -382,9 +417,9 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
 
     case "POPM":
       return "\(parsePopularimeterFrame(data: data) ?? "")"
-//
-//    case "GEOB":
-//      return "parseGeneralEncapsulatedData(data)"
+
+    case "GEOB":
+      return "\(parseGeneralEncapsulatedDataFrame(data:data) ?? "")"
 //
 //    case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
 //      return data.getString(from: 0..<data.count, encoding: encoding)
