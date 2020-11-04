@@ -109,14 +109,12 @@ struct SyncTextItem {
 }
 
 private func parseSyncTextFrame(data: Data) -> String? {
-  /*
-   <Header for 'Synchronised lyrics/text', ID: "SYLT">
-     Text encoding        $xx
-     Language             $xx xx xx
-     Time stamp format    $xx
-     Content type         $xx
-     Content descriptor   <text string according to encoding> $00 (00)
-   */
+  // <Header for 'Synchronised lyrics/text', ID: "SYLT">
+  // Text encoding        $xx
+  // Language             $xx xx xx
+  // Time stamp format    $xx
+  // Content type         $xx
+  // Content descriptor   <text string according to encoding> $00 (00)
   let textEncoding = getTextEncoding(data[data.startIndex])
   
   let languageStartIndex = data.startIndex + 1
@@ -139,12 +137,10 @@ private func parseSyncTextFrame(data: Data) -> String? {
     fatalError("Unable to parse synchronized text content descriptor")
   }
   
-  /*
-   Each sync has the following structure:
-    Terminated text to be synced (typically a syllable)
-    Sync identifier (terminator to above string)   $00 (00)
-    Time stamp                                     $xx (xx ...)
-   */
+  // Each sync has the following structure:
+  // Terminated text to be synced (typically a syllable)
+  // Sync identifier (terminator to above string)   $00 (00)
+  // Time stamp                                     $xx (xx ...)
   var syncTextItems: [SyncTextItem] = []
   var currentIndex = contentDescriptorEndIndex + 1
   while currentIndex < data.endIndex {
@@ -167,11 +163,11 @@ private func parseSyncTextFrame(data: Data) -> String? {
 }
 
 private func parseUnsyncTextFrame(data: Data) -> String? {
-  //  <Header for 'Unsynchronised lyrics/text transcription', ID: "USLT">
-  //       Text encoding        $xx
-  //       Language             $xx xx xx
-  //       Content descriptor   <text string according to encoding> $00 (00)
-  //       Lyrics/text          <full text string according to encoding>
+  // <Header for 'Unsynchronised lyrics/text transcription', ID: "USLT">
+  // Text encoding        $xx
+  // Language             $xx xx xx
+  // Content descriptor   <text string according to encoding> $00 (00)
+  // Lyrics/text          <full text string according to encoding>
   let textEncoding = getTextEncoding(data[data.startIndex])
   
   let languageStartIndex = data.startIndex + 1
@@ -195,14 +191,12 @@ private func parseUnsyncTextFrame(data: Data) -> String? {
 }
 
 private func parseGeneralEncapsulatedDataFrame(data: Data) -> String? {
-  /*
-   <Header for 'General encapsulated object', ID: "GEOB">
-        Text encoding          $xx
-        MIME type              <text string> $00
-        Filename               <text string according to encoding> $00 (00)
-        Content description    <text string according to encoding> $00 (00)
-        Encapsulated object    <binary data>
-   */
+  // <Header for 'General encapsulated object', ID: "GEOB">
+  // Text encoding          $xx
+  // MIME type              <text string> $00
+  // Filename               <text string according to encoding> $00 (00)
+  // Content description    <text string according to encoding> $00 (00)
+  // Encapsulated object    <binary data>
   let textEncoding = getTextEncoding(data[data.startIndex])
   
   let mimeTypeStartIndex = data.startIndex + 1
@@ -353,6 +347,31 @@ private func parsePicture(data: Data, encoding: String.Encoding, version: UInt8)
   return (mimeType, pictureType, description, pictureData)
 }
 
+func parseUrlLinkFrame(data: Data) -> String? {
+  return String(data: data, encoding: defaultEncoding)
+}
+
+func parseUserUrlLinkFrame(data: Data) -> String? {
+  // <Header for 'User defined URL link frame', ID: "WXXX">
+  // Text encoding     $xx
+  // Description       <text string according to encoding> $00 (00)
+  // URL               <text string>
+  let textEncoding = getTextEncoding(data[data.startIndex])
+  
+  let descriptionStartIndex = data.startIndex + 1
+  let descriptionEndIndex = findZero(data: data[descriptionStartIndex..<data.endIndex], encoding: textEncoding)
+  guard let description = data.getString(from: descriptionStartIndex..<descriptionEndIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse user URL link description")
+  }
+  
+  let urlStartIndex = descriptionEndIndex + getNullTerminatorLength(encoding: textEncoding)
+  guard let url = data.getString(from: urlStartIndex..<data.endIndex, encoding: defaultEncoding) else {
+    fatalError("Unable to parse user URL value")
+  }
+  
+  return "\(description) -- \(url)"
+}
+
 func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
   if data.count == 0 {
     return nil
@@ -420,12 +439,12 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
 
     case "GEOB":
       return "\(parseGeneralEncapsulatedDataFrame(data:data) ?? "")"
-//
-//    case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
-//      return data.getString(from: 0..<data.count, encoding: encoding)
-//
-//    case "WXXX":
-//      return "parseWXXX(data)"
+
+    case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
+      return "\(parseUrlLinkFrame(data:data) ?? "")"
+
+    case "WXXX":
+      return "\(parseUserUrlLinkFrame(data: data) ?? "")"
 //
 //    case "MCDI":
 //      return "parseMusicCDId"
