@@ -17,6 +17,7 @@ enum FrameValue {
   case userUrlLink(UserUrlLink)
   case credits([Credit])
   case position(Position)
+  case encryption(AudioEncryption)
 }
 
 typealias ArtistsList = [String: [String]]
@@ -41,6 +42,17 @@ enum Position {
   case string(String)
 }
 
+struct AudioEncryption {
+  struct Preview {
+    let startFrame: Int
+    let numFrames: Int
+  }
+  
+  let ownerIdentifier: String
+  let preview: Preview?
+  let encryptionInfo: Data?
+}
+
 private let defaultEncoding = String.Encoding.isoLatin1
 
 private func involvedPersonPairToCredit(pair: (String, String)) -> Credit {
@@ -52,6 +64,21 @@ private func involvedPersonPairToCredit(pair: (String, String)) -> Credit {
   )
 }
 
+private func wrap<T>(_ parser: @escaping (Data) -> ParserResult<T, String>, type: @escaping (T) -> FrameValue) -> (Data) -> FrameValue {
+  return { data in
+    switch parser(data) {
+    case .success(let value):
+      return type(value)
+    case .failure(let error):
+      return .invalid(error: error)
+    }
+  }
+}
+
+let parsers: [String: (Data) -> FrameValue] = [
+  "AENC": wrap(parseAudioEncryptionFrame, type: FrameValue.encryption)
+]
+
 func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> FrameValue {
   if data.count == 0 {
     return .invalid(error: "Frame contains no data")
@@ -59,8 +86,12 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> FrameValu
   
   let encoding = getTextEncoding(data[data.startIndex])
   let typeCase = type != "TXXX" && type.first == "T" ? "T*" : type
-
+  
   switch typeCase {
+    
+  case "AENC":
+    return parser(parseAudioEncryptionFrame, type: FrameValue.encryption)(data)
+    
   case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST":
     guard let text = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: encoding) else {
       return .invalid(error: "TODO ERROR PARSING")
@@ -75,12 +106,6 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> FrameValu
       
     case "TCON":
       return .stringArray(parseGenre(string: text))
-      
-    case "TCOM", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
-      return .invalid(error: "\(splitID3v2Values(text))")
-      
-    case "PCS", "PCST":
-      return .invalid(error: version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]")
       
     default:
       return .invalid(error: version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]")
@@ -101,7 +126,7 @@ func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> FrameValu
     return .invalid(error: "\(mimeType) -- \(pictureType) -- \(description) -- data len: \(pictureData.count)")
     
   case "CNT", "PCNT":
-    return .invalid(error: "\(data.readUInt32BE())")
+    return .invalid(error: "\(data.getUInt32BESafe())")
     
   case "SYLT":
     return .invalid(error: "\(parseSyncTextFrame(data: data) ?? "")")
@@ -366,7 +391,7 @@ private func parsePopularimeterFrame(data: Data) -> String? {
   let ratingIndex = emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)
   let rating = data[emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)]
   
-  let counter = data.readUInt32BE(offset: ratingIndex + 1)
+  let counter = data.getUInt32BESafe(offset: ratingIndex + 1)
   
   return "\(email) -- rating: \(rating) -- \(counter)"
 }
@@ -573,4 +598,19 @@ private func parseGenre(string: String) -> [String] {
   }
   
   return splitID3v2Values(string).map { parseID3v1Genre($0) ?? $0 }
+}
+
+private func parseAudioEncryptionFrame(_ data: Data) -> ParserResult<AudioEncryption, String> {
+  // <Header for 'Audio encryption', ID: "AENC">
+  // Owner identifier   <text string> $00
+  // Preview start      $xx xx
+  // Preview length     $xx xx
+  // Encryption info    <binary data>
+  let ownerIdEndIndex = findZero(data: data, encoding: defaultEncoding)
+  let ownerId = data.getString(from: data.startIndex..<ownerIdEndIndex, encoding: defaultEncoding)
+  
+  let previewStartStartIndex = ownerIdEndIndex + getNullTerminatorLength(encoding: defaultEncoding)
+  let previewStart = data.getUInt16BESafe(offset: previewStartStartIndex)
+  
+  fatalError("TODO")
 }

@@ -15,6 +15,13 @@ internal extension Data {
     )
   }
   
+  func getUInt16BESafe(offset: Int = 0) -> Int? {
+    guard offset >= self.startIndex && offset + 2 < self.endIndex else {
+      return nil
+    }
+    return self.getInt16BE(offset: offset)
+  }
+  
   func getInt24LE(offset: Int = 0) -> Int {
     return Int(
       UInt32(self[offset]) |
@@ -51,16 +58,11 @@ internal extension Data {
     )
   }
   
-  func readUInt32BE(offset: Int = 0) -> Int? {
+  func getUInt32BESafe(offset: Int = 0) -> Int? {
     guard offset >= self.startIndex && offset + 4 < self.endIndex else {
       return nil
     }
-    return Int(
-      (UInt32(self[offset]) << 24) |
-      (UInt32(self[offset + 1]) << 16) |
-      (UInt32(self[offset + 2]) << 8) |
-      UInt32(self[offset + 3])
-    )
+    return self.getInt32BE(offset: offset)
   }
     
   func getUInt32SyncSafe(offset: Int = 0) -> Int {
