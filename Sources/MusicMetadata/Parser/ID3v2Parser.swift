@@ -15,7 +15,7 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
       break
     }
 
-    if frameHeader.dataSize < 1 { break }
+    if frameHeader.dataSize < 1 || offset + frameHeader.dataSize + frameHeaderSize > data.count { break }
     
     offset += frameHeaderSize
     var frameData = data[offset..<offset + frameHeader.dataSize]
@@ -29,11 +29,7 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
       }
     }
     
-    guard let text = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version) else {
-      fatalError()
-      break
-    }
-    print("\(frameHeader.id) -- \(text)")
+    let frameValue = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version)
     
     offset += frameHeader.dataSize
   }
@@ -45,8 +41,6 @@ func ID3v2Parser(_ data: Data) -> Metadata? {
   guard let header = parseID3v2Header(data) else {
     return nil
   }
-  
-  print("Header \(header)")
   
   if header.hasExtendedHeader {
     if let extendedHeader = parseID3v2ExtendedHeader(data) {

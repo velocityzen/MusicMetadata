@@ -1,10 +1,144 @@
 import Foundation
 
+enum ParserResult<A, B> {
+  case success(A)
+  case failure(B)
+}
+
+struct Frame {
+  let id: String
+  let title: String
+  let value: FrameValue
+}
+
+enum FrameValue {
+  case invalid(error: String)
+  case stringArray([String])
+  case userUrlLink(UserUrlLink)
+  case credits([Credit])
+  case position(Position)
+}
+
 typealias ArtistsList = [String: [String]]
 
-let defaultEncoding = String.Encoding.isoLatin1
+struct UserUrlLink {
+  let description: String
+  let url: URL
+}
 
-func parseID3v2FrameValues(data: Data, version: UInt8, header: ID3v2FrameHeader) -> String? {
+struct MusicCDId {
+  let tableOfContents: Data
+}
+
+struct Credit {
+  let role: String
+  let names: [String]
+}
+
+enum Position {
+  case number(Int)
+  case numberWithTotal(trackNumber: Int, totalNumber: Int)
+  case string(String)
+}
+
+private let defaultEncoding = String.Encoding.isoLatin1
+
+private func involvedPersonPairToCredit(pair: (String, String)) -> Credit {
+  Credit(
+    role: pair.0,
+    names: pair.1
+      .split(separator: ",")
+      .map(String.init)
+  )
+}
+
+func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> FrameValue {
+  if data.count == 0 {
+    return .invalid(error: "Frame contains no data")
+  }
+  
+  let encoding = getTextEncoding(data[data.startIndex])
+  let typeCase = type != "TXXX" && type.first == "T" ? "T*" : type
+
+  switch typeCase {
+  case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST":
+    guard let text = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: encoding) else {
+      return .invalid(error: "TODO ERROR PARSING")
+    }
+    
+    switch type {
+    case "TMCL", "TIPL", "IPLS":
+      return .credits(splitID3v2Values(text).toPairs().map(involvedPersonPairToCredit))
+      
+    case "TRK", "TRCK", "TPOS":
+      return .position(parsePosition(string: text))
+      
+    case "TCON":
+      return .stringArray(parseGenre(string: text))
+      
+    case "TCOM", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
+      return .invalid(error: "\(splitID3v2Values(text))")
+      
+    case "PCS", "PCST":
+      return .invalid(error: version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]")
+      
+    default:
+      return .invalid(error: version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]")
+    }
+    
+  case "TXXX":
+    let frameData = data[data.startIndex + 1..<data.endIndex]
+    guard let (identifier, value) = parseZeroSeparatedStringPair(data: frameData, encoding: encoding) else {
+      return .invalid(error: "TODO")
+    }
+    
+    return .invalid(error: "\(identifier) -- \(value)")
+    
+  case "PIC", "APIC":
+    guard let (mimeType, pictureType, description, pictureData) = parsePictureFrame(data: data, version: version) else {
+      return .invalid(error: "TODO")
+    }
+    return .invalid(error: "\(mimeType) -- \(pictureType) -- \(description) -- data len: \(pictureData.count)")
+    
+  case "CNT", "PCNT":
+    return .invalid(error: "\(data.readUInt32BE())")
+    
+  case "SYLT":
+    return .invalid(error: "\(parseSyncTextFrame(data: data) ?? "")")
+    
+  case "ULT", "USLT", "COM", "COMM":
+    return .invalid(error: "\(parseUnsyncTextFrame(data: data) ?? "")")
+    
+  case "UFID", "PRIV":
+    guard let (identifier, value) = parseZeroSeparatedStringDataPair(data: data, encoding: encoding) else {
+      return .invalid(error: "TODO")
+    }
+    return .invalid(error: "\(identifier) -- data len: \(value.count)")
+    
+  case "POPM":
+    return .invalid(error: "\(parsePopularimeterFrame(data: data) ?? "")")
+    
+  case "GEOB":
+    return .invalid(error: "\(parseGeneralEncapsulatedDataFrame(data: data) ?? "")")
+    
+  case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
+    return .invalid(error: "\(parseUrlLinkFrame(data: data) ?? "")")
+    
+  case "WXXX":
+    return .invalid(error: "\(parseUserUrlLinkFrame(data: data))")
+    
+  case "WFD", "WFED":
+    return .invalid(error: "\(parseApplePodcastFeedUrlFrame(data: data) ?? "")")
+    
+  case "MCDI":
+    return .invalid(error: "\(parseMusicCDIdentifier(data: data))")
+  
+  default:
+    return .invalid(error: "Unsupported frame type \"\(type)\"")
+  }
+}
+
+func parseID3v2FrameValues(data: Data, version: UInt8, header: ID3v2FrameHeader) -> FrameValue {
   switch version {
   case 2:
     return parseID3v2FrameValue(data: data, type: header.id, version: version)
@@ -22,7 +156,7 @@ func parseID3v2FrameValues(data: Data, version: UInt8, header: ID3v2FrameHeader)
     return parseID3v2FrameValue(data: data, type: header.id, version: version)
     
   default:
-    return nil
+    return .invalid(error: "TODO")
   }
 }
 
@@ -232,7 +366,7 @@ private func parsePopularimeterFrame(data: Data) -> String? {
   let ratingIndex = emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)
   let rating = data[emailEndIndex + getNullTerminatorLength(encoding: defaultEncoding)]
   
-  let counter = data.getInt32BE(offset: ratingIndex + 1)
+  let counter = data.readUInt32BE(offset: ratingIndex + 1)
   
   return "\(email) -- rating: \(rating) -- \(counter)"
 }
@@ -313,145 +447,130 @@ private func parsePictureMimeType(data: Data, version: UInt8) -> (String, Data.I
     let endIndex = data.startIndex + 3
     let imageFormat = data.getString(from: data.startIndex..<endIndex, encoding: defaultEncoding)
     guard let mimeType = version2ImageFormatToMimeType(imageFormat: imageFormat) else {
-      print("WARNING: Failed to parse image MIME type")
-      return nil
+      fatalError("Unable to parse attached picture MIME type")
     }
-    return (mimeType, endIndex)
+    let nextItemIndex = endIndex + getNullTerminatorLength(encoding: defaultEncoding)
+    return (mimeType, nextItemIndex)
   case 3, 4:
     let endIndex = findZero(data: data, encoding: defaultEncoding)
     guard let mimeType = data.getString(from: data.startIndex..<endIndex, encoding: defaultEncoding) else {
-      print("WARNING: Failed to parse image MIME type")
-      return nil
+      fatalError("Unable to parse attached picture MIME type")
     }
-    return (mimeType, endIndex)
+    let nextItemIndex = endIndex + getNullTerminatorLength(encoding: defaultEncoding)
+    return (mimeType, nextItemIndex)
   default:
     fatalError("Unexpected IDv3 version \(version)")
   }
 }
 
-private func parsePicture(data: Data, encoding: String.Encoding, version: UInt8) -> (String, UInt8, String, Data)? {
-  guard let (mimeType, mimeTypeEndIndex) = parsePictureMimeType(data: data, version: version) else {
-    return nil
+private func parsePictureFrame(data: Data, version: UInt8) -> (String, UInt8, String, Data)? {
+  // <Header for 'Attached picture', ID: "APIC">
+  // Text encoding      $xx
+  // MIME type          <text string> $00
+  // Picture type       $xx
+  // Description        <text string according to encoding> $00 (00)
+  // Picture data       <binary data>
+  let textEncoding = getTextEncoding(data[data.startIndex])
+  
+  let mimeTypeData = data[data.startIndex + 1..<data.endIndex]
+  guard let (mimeType, pictureTypeStartIndex) = parsePictureMimeType(data: mimeTypeData, version: version) else {
+    fatalError("Unable to parse attached picture MIME type")
   }
   
-  let pictureType = data[mimeTypeEndIndex + 1]
+  let pictureType = data[pictureTypeStartIndex]
   
-  let fzero = findZero(data: data[mimeTypeEndIndex + 2..<data.endIndex], encoding: encoding)
-  guard let description = data.getString(from: mimeTypeEndIndex + 2..<fzero, encoding: encoding) else {
-    print("WARNING: Failed to parse image description")
-    return nil
+  let descriptionStartIndex = pictureTypeStartIndex + 1
+  let descriptionEndIndex = findZero(data: data[descriptionStartIndex..<data.endIndex], encoding: textEncoding)
+  guard let description = data.getString(from: descriptionStartIndex..<descriptionEndIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse attached picture description")
   }
   
-  let pictureData = data[fzero + getNullTerminatorLength(encoding: encoding)..<data.endIndex]
+  let pictureDataStartIndex = descriptionEndIndex + getNullTerminatorLength(encoding: textEncoding)
+  guard pictureDataStartIndex <= data.endIndex else {
+    return nil
+  }
+  let pictureData = data[pictureDataStartIndex..<data.endIndex]
   
   return (mimeType, pictureType, description, pictureData)
 }
 
-func parseUrlLinkFrame(data: Data) -> String? {
+private func parseUrlLinkFrame(data: Data) -> String? {
   return String(data: data, encoding: defaultEncoding)
 }
 
-func parseUserUrlLinkFrame(data: Data) -> String? {
+private func parseUserUrlLinkFrame(data: Data) -> ParserResult<UserUrlLink, String> {
   // <Header for 'User defined URL link frame', ID: "WXXX">
   // Text encoding     $xx
   // Description       <text string according to encoding> $00 (00)
   // URL               <text string>
+  if (data.count < 3) {
+    return .failure("Unable to parse user URL link. Data size too small.")
+  }
   let textEncoding = getTextEncoding(data[data.startIndex])
   
   let descriptionStartIndex = data.startIndex + 1
   let descriptionEndIndex = findZero(data: data[descriptionStartIndex..<data.endIndex], encoding: textEncoding)
   guard let description = data.getString(from: descriptionStartIndex..<descriptionEndIndex, encoding: textEncoding) else {
-    fatalError("Unable to parse user URL link description")
+    return .failure("Unable to parse user URL link description")
   }
   
   let urlStartIndex = descriptionEndIndex + getNullTerminatorLength(encoding: textEncoding)
-  guard let url = data.getString(from: urlStartIndex..<data.endIndex, encoding: defaultEncoding) else {
-    fatalError("Unable to parse user URL value")
+  guard let urlString = data.getString(from: urlStartIndex..<data.endIndex, encoding: defaultEncoding) else {
+    return .failure("Unable to parse user URL data")
   }
   
-  return "\(description) -- \(url)"
+  guard let url = URL(string: urlString) else {
+    return .failure("Unable to parse user URL string")
+  }
+  
+  let result = UserUrlLink(description: description, url: url)
+  
+  return .success(result)
 }
 
-func parseID3v2FrameValue(data: Data, type: String, version: UInt8) -> String? {
-  if data.count == 0 {
-    return nil
+private func parseApplePodcastFeedUrlFrame(data: Data) -> String? {
+  let textEncoding = getTextEncoding(data[data.startIndex])
+  guard let url = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: textEncoding) else {
+    fatalError("Unable to parse Apple podcast feed URL value")
   }
   
-  let encoding = getTextEncoding(data[data.startIndex])
-  
-  let typeCase = type != "TXXX" && type.first == "T" ? "T*" : type
-  switch typeCase {
-  case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST":
-    guard let text = data.getString(from: data.startIndex + 1..<data.endIndex, encoding: encoding) else {
-      return nil
-    }
-    
-    switch type {
-    case "TMLC", "TIMPL", "IPLS":
-      let output = splitID3v2Values(text)
-      return "\(output)"
-      
-    case "TRK", "TRCK", "TPOS":
-      return ".track(value: \(text))"
-      
-    case "TCOM", "TCON", "TEXT", "TOLY", "TOPE", "TPE1", "TSRC":
-      return "\(splitID3v2Values(text))"
-      
-    case "PCS", "PCST":
-      return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
-      
-    default:
-      return version >= 4 ? "\(splitID3v2Values(text))" : "[\(text)]"
-    }
-    
-  case "TXXX":
-    let frameData = data[data.startIndex + 1..<data.endIndex]
-    guard let (identifier, value) = parseZeroSeparatedStringPair(data: frameData, encoding: encoding) else {
-      return nil
-    }
-    
-    return "\(identifier) -- \(value)"
-    
-  case "PIC", "APIC":
-    let frameData = data[data.startIndex + 1..<data.endIndex]
-    guard let (mimeType, pictureType, description, pictureData) = parsePicture(data: frameData, encoding: encoding, version: version) else {
-      return nil
-    }
-    return "\(mimeType) -- \(pictureType) -- \(description)"
-    
-  case "CNT", "PCNT":
-    return "\(data.getInt32BE())"
-    
-  case "SYLT":
-    return "\(parseSyncTextFrame(data: data) ?? "")"
-    
-  case "ULT", "USLT", "COM", "COMM":
-    return "\(parseUnsyncTextFrame(data: data) ?? "")"
-    
-  case "UFID", "PRIV":
-    guard let (identifier, value) = parseZeroSeparatedStringDataPair(data: data, encoding: encoding) else {
-      return nil
-    }
-    return "\(identifier) -- data len: \(value.count)"
-    
-  case "POPM":
-    return "\(parsePopularimeterFrame(data: data) ?? "")"
-    
-  case "GEOB":
-    return "\(parseGeneralEncapsulatedDataFrame(data:data) ?? "")"
-    
-  case "WCOM", "WCOP", "WOAF", "WOAR", "WOAS", "WORS", "WPAY", "WPUB":
-    return "\(parseUrlLinkFrame(data:data) ?? "")"
-    
-  case "WXXX":
-    return "\(parseUserUrlLinkFrame(data: data) ?? "")"
-    
-    
-  //    case "MCDI":
-  //      return "parseMusicCDId"
-  
-  default:
-    return "NOT IMPLEMENTED FRAME ID: \(type)"
-  }
+  return "\(url)"
 }
 
+private func parseMusicCDIdentifier(data: Data) -> ParserResult<MusicCDId, String> {
+  return .success(MusicCDId(tableOfContents: data))
+}
+
+private func parsePosition(string: String) -> Position {
+  func parseNumberWithTotal(_ string: String) -> Position? {
+    let parts = string.split(separator: "/")
+    guard parts.count == 2 else {
+      return nil
+    }
+    guard let trackNumber = Int(parts[0]), let totalNumber = Int(parts[1]) else {
+      return nil
+    }
+    return .numberWithTotal(trackNumber: trackNumber, totalNumber: totalNumber)
+  }
+  
+  func parseNumberWithoutTotal(_ string: String) -> Position? {
+    guard let intValue = Int(string) else {
+      return nil
+    }
+    return .number(intValue)
+  }
+  
+  return parseNumberWithTotal(string) ??
+    parseNumberWithoutTotal(string) ??
+    .string(string)
+}
+
+private func parseGenre(string: String) -> [String] {
+  // The value is a zero separated string of genres.
+  // A genre value can be either any string, or a ID3v1 genre identifer number as a string.
+  func parseID3v1Genre(_ string: String) -> String? {
+    Int(string).flatMap { ID3v1Genres[safeIndex: $0] }
+  }
+  
+  return splitID3v2Values(string).map { parseID3v1Genre($0) ?? $0 }
+}

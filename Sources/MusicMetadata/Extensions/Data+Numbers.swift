@@ -50,6 +50,18 @@ internal extension Data {
       UInt32(self[offset + 3])
     )
   }
+  
+  func readUInt32BE(offset: Int = 0) -> Int? {
+    guard offset >= self.startIndex && offset + 4 < self.endIndex else {
+      return nil
+    }
+    return Int(
+      (UInt32(self[offset]) << 24) |
+      (UInt32(self[offset + 1]) << 16) |
+      (UInt32(self[offset + 2]) << 8) |
+      UInt32(self[offset + 3])
+    )
+  }
     
   func getUInt32SyncSafe(offset: Int = 0) -> Int {
     return Int(
