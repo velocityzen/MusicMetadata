@@ -1,6 +1,5 @@
 import Foundation
 
-
 func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
   guard let frameHeaderSize = getID3v2FrameHeaderSize(version) else {
     return nil
@@ -15,42 +14,24 @@ func parseID3v2Data(data: Data, version: UInt8) -> Metadata? {
     ) else {
       break
     }
-    
-    //TODO: check frameHeader.id
+
+    if frameHeader.dataSize < 1 || offset + frameHeader.dataSize + frameHeaderSize > data.count { break }
     
     offset += frameHeaderSize
-    
-    var frameData = data[offset..<offset + frameHeader.size]
-    
+    var frameData = data[offset..<offset + frameHeader.dataSize]
     if version == 3 || version == 4 {
-      if header.flags?.formatUnsynchronisation ?? false {
+      if frameHeader.flags?.formatUnsynchronisation ?? false {
         frameData = removeUnsyncBytes(frameData)
       }
-      
-      if header.flags?.formatDataLengthIndicator ?? false {
+
+      if frameHeader.flags?.formatDataLengthIndicator ?? false {
         frameData = frameData[4..<frameData.count]
       }
     }
     
-    let encoding = getTextEncoding(data[0])
-    let frameIdCase = frameHeader.id != "TXXX" && frameHeader.id.first == "T" ? "T*" : frameHeader.id
+    let frameValue = parseID3v2FrameValue(data: frameData, type: frameHeader.id, version: version)
     
-
-    switch frameIdCase {
-      case "T*", "IPLS", "MVIN", "MVNM", "PCS", "PCST" :
-        guard let text = frameData.getString(from: 1..<data.count, encoding: encoding) else {
-          return break
-        }
-        
-        switch frameHeader.id {
-          case "TMLC", "TIMPL", "IPLS":
-      
-    }
-    
-    
-    offset += frameHeader.size
-    
-    print("\(frameHeader.id) = \(values)")
+    offset += frameHeader.dataSize
   }
   
   return metadata
@@ -60,8 +41,6 @@ func ID3v2Parser(_ data: Data) -> Metadata? {
   guard let header = parseID3v2Header(data) else {
     return nil
   }
-  
-  print("Header \(header)")
   
   if header.hasExtendedHeader {
     if let extendedHeader = parseID3v2ExtendedHeader(data) {

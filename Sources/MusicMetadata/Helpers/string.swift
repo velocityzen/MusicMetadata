@@ -4,10 +4,10 @@ func getTextEncoding(_ str: UInt8) -> String.Encoding {
       return .isoLatin1
     
     case 0x01:
-      return .utf16BigEndian
+      return .utf16LittleEndian
     
     case 0x02:
-      return .utf16LittleEndian
+      return .utf16BigEndian
     
     case 0x03:
       return .utf8
